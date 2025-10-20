@@ -11,7 +11,7 @@ import { Env, ChatMessage } from "./types";
 
 // Model ID for Workers AI model
 // https://developers.cloudflare.com/workers-ai/models/
-const MODEL_ID = "@cf/qwen/qwen2.5-coder-32b-instruct";
+const MODEL_ID = "@cf/openai/gpt-oss-120b";  // ← ここを変更
 
 // Default system prompt
 const SYSTEM_PROMPT =
@@ -62,16 +62,15 @@ async function handleChatRequest(
       messages: ChatMessage[];
     };
 
-    // Add system prompt if not present
-    if (!messages.some((msg) => msg.role === "system")) {
-      messages.unshift({ role: "system", content: SYSTEM_PROMPT });
-    }
+    // gpt-oss-120bはinstructionsパラメータでシステムプロンプトを指定するため、
+    // messages配列からsystemロールを除外
+    const userMessages = messages.filter((msg) => msg.role !== "system");
 
     const response = await env.AI.run(
       MODEL_ID, 
       {
-        instructions: SYSTEM_PROMPT,  // systemの代わりにinstructions
-        input: messages,               // messagesの代わりにinput
+        instructions: SYSTEM_PROMPT,  // システムプロンプト
+        input: userMessages,           // システムメッセージを除いた会話履歴
         stream: true
       }
     );
