@@ -94,6 +94,7 @@ async function sendMessage() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let responseText = "";
+    let buffer = "";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -102,12 +103,22 @@ async function sendMessage() {
         break;
       }
 
-      // Decode chunk
-      const chunk = decoder.decode(value, { stream: true });
+      // Decode chunk and add to buffer
+      buffer += decoder.decode(value, { stream: true });
+      
+      // Split by newlines to process complete lines
+      const lines = buffer.split("\n");
+      
+      // Keep the last incomplete line in the buffer
+      buffer = lines.pop() || "";
 
-      // Process SSE format
-      const lines = chunk.split("\n");
       for (const line of lines) {
+        // Skip empty lines
+        if (!line.trim()) continue;
+        
+        // デバッグ用
+        console.log("Processing line:", line);
+        
         try {
           const jsonData = JSON.parse(line);
           if (jsonData.response) {
@@ -119,13 +130,15 @@ async function sendMessage() {
             chatMessages.scrollTop = chatMessages.scrollHeight;
           }
         } catch (e) {
-          console.error("Error parsing JSON:", e);
+          console.error("Error parsing JSON:", e, "Line:", line);
         }
       }
     }
 
     // Add completed response to chat history
-    chatHistory.push({ role: "assistant", content: responseText });
+    if (responseText) {
+      chatHistory.push({ role: "assistant", content: responseText });
+    }
   } catch (error) {
     console.error("Error:", error);
     addMessageToChat(
