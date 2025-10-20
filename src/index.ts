@@ -11,7 +11,7 @@ import { Env, ChatMessage } from "./types";
 
 // Model ID for Workers AI model
 // https://developers.cloudflare.com/workers-ai/models/
-const MODEL_ID = "@cf/openai/gpt-oss-120b";  // ← ここを変更
+const MODEL_ID = "@cf/openai/gpt-oss-120b";
 
 // Default system prompt
 const SYSTEM_PROMPT =
@@ -61,30 +61,60 @@ async function handleChatRequest(
       messages: ChatMessage[];
     };
 
-    // システムメッセージを除外
+    // システムメッセージを除外（instructionsで指定するため）
     const userMessages = messages.filter((msg) => msg.role !== "system");
 
     // gpt-oss-120b用の呼び出し
-    const response = await env.AI.run(MODEL_ID, {
+    const aiResponse = await env.AI.run(MODEL_ID, {
       instructions: SYSTEM_PROMPT,
       input: userMessages,
       stream: true
     });
 
-    // レスポンスがReadableStreamの場合の処理
-    if (response instanceof ReadableStream) {
-      return new Response(response, {
-        headers: {
-          "content-type": "text/event-stream",
-          "cache-control": "no-cache",
-          "connection": "keep-alive",
-        },
-      });
-    }
+    // ReadableStreamをSSE形式に変換
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
 
-    // それ以外の場合はそのまま返す
-    return new Response(JSON.stringify(response), {
-      headers: { "content-type": "application/json" },
+    // バックグラウンドでストリーム処理
+    (async () => {
+      try {
+        // aiResponseがReadableStreamの場合
+        if (aiResponse && typeof aiResponse === 'object' && 'getReader' in aiResponse) {
+          const reader = aiResponse.getReader();
+          const decoder = new TextDecoder();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const text = decoder.decode(value, { stream: true });
+            
+            // SSE形式で送信
+            await writer.write(
+              encoder.encode(JSON.stringify({ response: text }) + "\n")
+            );
+          }
+        } else {
+          // ストリームでない場合
+          const text = typeof aiResponse === 'string' ? aiResponse : JSON.stringify(aiResponse);
+          await writer.write(
+            encoder.encode(JSON.stringify({ response: text }) + "\n")
+          );
+        }
+      } catch (error) {
+        console.error("Stream processing error:", error);
+      } finally {
+        await writer.close();
+      }
+    })();
+
+    return new Response(readable, {
+      headers: {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        "connection": "keep-alive",
+      },
     });
 
   } catch (error) {
