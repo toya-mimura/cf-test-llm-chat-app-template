@@ -68,22 +68,14 @@ async function handleChatRequest(
     }
 
     const response = await env.AI.run(
-      MODEL_ID,
+      MODEL_ID, 
       {
-        messages,
-        max_tokens: 1024,
-      },
-      {
-        returnRawResponse: true,
-        // Uncomment to use AI Gateway
-        // gateway: {
-        //   id: "YOUR_GATEWAY_ID", // Replace with your AI Gateway ID
-        //   skipCache: false,      // Set to true to bypass cache
-        //   cacheTtl: 3600,        // Cache time-to-live in seconds
-        // },
-      },
+        instructions: SYSTEM_PROMPT,  // systemの代わりにinstructions
+        input: messages,               // messagesの代わりにinput
+        stream: true
+      }
     );
-
+    
     // Return streaming response
     return response;
   } catch (error) {
